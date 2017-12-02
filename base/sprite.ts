@@ -373,6 +373,7 @@ class Sprite {
     scale: Vec2 = new Vec2(1, 1);
     /** Image rotation (in radian). */
     rotation: number = 0;
+    alpha: number = 1.0;
     
     /** Returns the image source of the sprite. */
     getSkin(): ImageSource {
@@ -388,8 +389,7 @@ class Sprite {
 
     /** Returns true if the sprite can respond to mouse event. */
     mouseSelectable(p: Vec2): boolean {
-	// return this.getBounds().containsPt(p);
-	return false;
+	return this.visible && this.getBounds().containsPt(p);
     }
 
     /** Returns the bounds of the sprite at a given pos. */
@@ -406,6 +406,12 @@ class Sprite {
     /** Renders itself in the given context. */
     render(ctx: CanvasRenderingContext2D) {
 	ctx.save();
+	this.setupContext(ctx);
+	this.renderImage(ctx);
+	ctx.restore();
+    }
+
+    setupContext(ctx: CanvasRenderingContext2D) {
 	let pos = this.getPos();
 	if (pos !== null) {
 	    ctx.translate(pos.x, pos.y);
@@ -414,10 +420,9 @@ class Sprite {
 	    ctx.rotate(this.rotation);
 	}
 	ctx.scale(this.scale.x, this.scale.y);
-	this.renderImage(ctx);
-	ctx.restore();
+	ctx.globalAlpha = this.alpha;
     }
-
+    
     /** Renders its image. */
     renderImage(ctx: CanvasRenderingContext2D) {
 	let skin = this.getSkin();
