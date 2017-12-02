@@ -121,7 +121,7 @@ class Player extends PlanningEntity {
     constructor(scene: Game, pos: Vec2) {
 	super(scene.grid, scene.tilemap, scene.physics, pos);
 	this.scene = scene;
-	this.skin = new RectImageSource('green', new Rect(-16,-16,32,32));
+	this.skin = new RectImageSource('#00ff00', new Rect(-16,-16,32,32));
 	this.collider = this.skin.getBounds();
 	this.setHitbox(this.collider as Rect);
     }
@@ -135,8 +135,10 @@ class Player extends PlanningEntity {
     }
     
     setPlan(item: Item, target: Target) {
-	let action = this.getAction(target.pos)
-	let runner = new PlatformerActionRunner(this, action);
+	let pos1 = this.scene.basket.pos;
+	let action1 = this.getAction(pos1);
+	action1.chain(this.getAction(target.pos, pos1));
+	let runner = new PlatformerActionRunner(this, action1);
 	this.tasklist.add(runner);
     }
 }
@@ -169,6 +171,8 @@ class Game extends GameScene {
     tilemap: TileMap;
     grid: GridConfig;
     front: SpriteLayer;
+    basket: Basket;
+    exit: Exit;
 
     scoreBox: TextBox;
     score: number;
@@ -208,10 +212,12 @@ class Game extends GameScene {
 	    switch (c) {
 	    case 3:
 		this.add(new Cloth(rect.center()), this.front);
-		this.add(new Basket(rect.center()));
+		this.basket = new Basket(rect.center());
+		this.add(this.basket);
 		break;
 	    case 4:
-		this.add(new Exit(rect.center()));
+		this.exit = new Exit(rect.center());
+		this.add(this.exit);
 		break;
 	    case 5:
 		this.add(new Washer(rect.center()));

@@ -104,21 +104,19 @@ class PlanActionEntry {
 class PlanMap {
 
     grid: GridConfig;
-    goal: Vec2;
     
     private _map: PlanActionMap;
     private _queue: PlanActionEntry[];
     
     constructor(grid: GridConfig) {
 	this.grid = grid;
-	this.goal = null;
     }
 
     toString() {
-	return ('<PlanMap '+this.goal+'>');
+	return ('<PlanMap '+this.grid+'>');
     }
 
-    render(ctx: CanvasRenderingContext2D, start: Vec2=null) {
+    render(ctx: CanvasRenderingContext2D, goal: Vec2=null, start: Vec2=null) {
 	let grid = this.grid;
 	let gs = grid.gridsize;
 	let rs = gs/2;
@@ -141,8 +139,8 @@ class PlanMap {
 		}
 	    }
 	}
-	if (this.goal !== null) {
-	    let p = grid.grid2coord(this.goal);
+	if (goal !== null) {
+	    let p = grid.grid2coord(goal);
 	    ctx.strokeStyle = '#00ff00';
 	    ctx.strokeRect(p.x-gs/2+.5,
 			   p.y-gs/2+.5,
@@ -155,6 +153,25 @@ class PlanMap {
 			   p.y-gs/2+.5,
 			   gs, gs);
 	}
+    }
+
+    build(actor: PlanActor, goal: Vec2, range: Rect,
+	  start: Vec2=null, maxcost=Infinity): PlanAction {
+	this._map = {};
+	this._queue = [];
+	this.addAction(start, new PlanAction(goal));
+	while (0 < this._queue.length) {
+	    let action = this._queue.shift().action;
+	    if (maxcost <= action.cost) continue;
+	    if (start !== null && start.equals(action.p)) return action;
+	    this.expandPlan(actor, range, action, start);
+	    // A* search.
+	    if (start !== null) {
+		this._queue.sort(
+		    (a:PlanActionEntry,b:PlanActionEntry) => { return a.total-b.total; });
+	    }
+	}
+	return null;
     }
 
     getAction(x: number, y: number, context: string=null) {
@@ -176,23 +193,6 @@ class PlanMap {
 			 Math.abs(start.y-action.p.y)));
 	    this._queue.push(new PlanActionEntry(action, dist+action.cost));
 	}
-    }
-
-    build(actor: PlanActor, goal: Vec2, range: Rect, start: Vec2=null, maxcost=Infinity) {
-	this.goal = goal.copy();
-	this._map = {};
-	this._queue = [];
-	this.addAction(null, new PlanAction(goal));
-	while (0 < this._queue.length) {
-	    let action = this._queue.shift().action;
-	    if (maxcost <= action.cost) continue;
-	    if (start !== null && start.equals(action.p)) return true;
-	    this.expandPlan(actor, range, action, start);
-	    // A* search.
-	    this._queue.sort(
-		(a:PlanActionEntry,b:PlanActionEntry) => { return a.total-b.total; });
-	}
-	return false;
     }
 
     expandPlan(actor: PlanActor, range: Rect, a0: PlanAction, start: Vec2=null) {
@@ -254,34 +254,45 @@ interface PlatformerActor extends PlanActor {
 // 
 class PlatformerAction extends PlanAction {
     
-    type: ActionType;
-    
-    constructor(p: Vec2,
-		next: PlanAction=null,
-		cost=0,
-		context: string=null,
-		type: ActionType=ActionType.NONE) {
-	super(p, next, cost, context);
-	this.type = type;
-    }
-
     toString() {
-	return ('<PlatformAction('+this.p.x+','+this.p.y+'): cost='+this.cost+' '+this.type+'>');
+	return ('<PlatformAction('+this.p.x+','+this.p.y+'): cost='+this.cost+'>');
     }
     
-    getColor() {
-	switch (this.type) {
-	case ActionType.WALK:
-	    return 'white';
-	case ActionType.FALL:
-	    return 'blue';
-	case ActionType.JUMP:
-	    return 'magenta';
-	case ActionType.CLIMB:
-	    return 'cyan';
-	default:
-	    return null;
-	}
+    getColor(): string {
+	return null;
+    }
+}
+
+class PlatformerWalkAction extends PlatformerAction {
+    toString() {
+	return ('<PlatformWalkAction('+this.p.x+','+this.p.y+'): cost='+this.cost+'>');
+    }
+    getColor(): string {
+	return 'white';
+    }
+}
+class PlatformerFallAction extends PlatformerAction {
+    toString() {
+	return ('<PlatformFallAction('+this.p.x+','+this.p.y+'): cost='+this.cost+'>');
+    }
+    getColor(): string {
+	return 'blue';
+    }
+}
+class PlatformerJumpAction extends PlatformerAction {
+    toString() {
+	return ('<PlatformJumpAction('+this.p.x+','+this.p.y+'): cost='+this.cost+'>');
+    }
+    getColor(): string {
+	return 'magenta';
+    }
+}
+class PlatformerClimbAction extends PlatformerAction {
+    toString() {
+	return ('<PlatformClimbAction('+this.p.x+','+this.p.y+'): cost='+this.cost+'>');
+    }
+    getColor(): string {
+	return 'cyan';
     }
 }
 
@@ -289,7 +300,23 @@ class PlatformerAction extends PlanAction {
 // 
 class PlatformerPlanMap extends PlanMap {
 
-    expandPlan(actor: PlatformerActor, range: Rect, a0: PlatformerAction, start: Vec2=null) {
+    obstacle: RangeMap;
+    grabbable: RangeMap;
+    stoppable: RangeMap;
+
+    constructor(grid: GridConfig, tilemap: TileMap, physics: PhysicsConfig) {
+	super(grid);
+	this.grid = grid;
+	this.obstacle = tilemap.getRangeMap(
+	    'obstacle', physics.isObstacle);
+	this.grabbable = tilemap.getRangeMap(
+	    'grabbable', physics.isGrabbable);
+	this.stoppable = tilemap.getRangeMap(
+	    'stoppable', physics.isStoppable);
+    }
+    
+    expandPlan(actor: PlatformerActor, range: Rect,
+	       a0: PlatformerAction, start: Vec2=null) {
 	let p = a0.p;
 	// assert(range.containsPt(p));
 
@@ -297,15 +324,15 @@ class PlatformerPlanMap extends PlanMap {
 	let dp = new Vec2(p.x, p.y-1);
 	if (range.containsPt(dp) &&
 	    actor.canClimbDown(dp)) {
-	    this.addAction(start, new PlatformerAction(
-		dp, a0, a0.cost+1, null, ActionType.CLIMB));
+	    this.addAction(start, new PlatformerClimbAction(
+		dp, a0, a0.cost+1, null));
 	}
 	// try climbing up.
 	let up = new Vec2(p.x, p.y+1);
 	if (range.containsPt(up) &&
 	    actor.canClimbUp(up)) {
-	    this.addAction(start, new PlatformerAction(
-		up, a0, a0.cost+1, null, ActionType.CLIMB));
+	    this.addAction(start, new PlatformerClimbAction(
+		up, a0, a0.cost+1, null));
 	}
 
 	// for left and right.
@@ -317,8 +344,8 @@ class PlatformerPlanMap extends PlanMap {
 		actor.canMoveTo(wp) &&
 		(actor.canGrabAt(wp) ||
 		 actor.canStandAt(wp))) {
-		this.addAction(start, new PlatformerAction(
-		    wp, a0, a0.cost+1, null, ActionType.WALK));
+		this.addAction(start, new PlatformerWalkAction(
+		    wp, a0, a0.cost+1, null));
 	    }
 
 	    // try falling.
@@ -340,14 +367,14 @@ class PlatformerPlanMap extends PlanMap {
 		    //     ######
 		    if (actor.canFallTo(fp, p)) {
 			let dc = Math.abs(v.x)+Math.abs(v.y);
-			this.addAction(start, new PlatformerAction(
-			    fp, a0, a0.cost+dc, null, ActionType.FALL));
+			this.addAction(start, new PlatformerFallAction(
+			    fp, a0, a0.cost+dc, null));
 		    }
 		}
 	    }
 
 	    // try jumping.
-	    if (a0.type === ActionType.FALL) {
+	    if (a0 instanceof PlatformerFallAction) {
 		let jumppts = actor.getJumpPoints();
 		for (let v of jumppts) {
 		    // try the v.x == 0 case only once.
@@ -366,8 +393,8 @@ class PlatformerPlanMap extends PlanMap {
 		    // ######
 		    if (actor.canJumpTo(jp, p)) {
 			let dc = Math.abs(v.x)+Math.abs(v.y);
-			this.addAction(start, new PlatformerAction(
-			    jp, a0, a0.cost+dc, null, ActionType.JUMP));
+			this.addAction(start, new PlatformerJumpAction(
+			    jp, a0, a0.cost+dc, null));
 		    }
 		}
 	    } else if (actor.canStandAt(p)) {
@@ -388,8 +415,8 @@ class PlatformerPlanMap extends PlanMap {
 		    // ######
 		    if (actor.canJumpTo(jp, p)) {
 			let dc = Math.abs(v.x)+Math.abs(v.y);
-			this.addAction(start, new PlatformerAction(
-			    jp, a0, a0.cost+dc, null, ActionType.JUMP));
+			this.addAction(start, new PlatformerJumpAction(
+			    jp, a0, a0.cost+dc, null));
 		    }
 		}
 	    }

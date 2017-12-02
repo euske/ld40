@@ -109,7 +109,13 @@ class ActionRunner extends Task {
 
     setAction(action: PlanAction) {
 	this.action = action;
-	this.lifetime = this.timeout;
+	if (action === null || action.next === null) {
+	    this.stop();
+	    log("setAction: stopped");
+	} else {
+	    this.lifetime = this.timeout;
+	    log("setAction: "+action);
+	}
     }
 }
 
@@ -123,30 +129,20 @@ class PlatformerActionRunner extends ActionRunner {
     }
     
     update() {
-	if (this.action === null || this.action.next === null) {
-	    this.stop();
-	    return;
-	}
-	
-	let actor = this.actor as PlatformerActor;
-	let action = this.action as PlatformerAction;
+	let actor = this.actor as PlatformerActor;;
+	let action = this.action;
 	let cur = actor.getGridPos();
 	let dst = action.next.p;
 
 	// Get a micro-level (greedy) plan.
-	switch (action.type) {
-	case ActionType.NONE:
-	    break;
-
-	case ActionType.WALK:
-	case ActionType.CLIMB:
+	if (action instanceof PlatformerWalkAction ||
+	    action instanceof PlatformerClimbAction) {
 	    actor.moveToward(dst);
 	    if (cur.equals(dst)) {
 		this.setAction(action.next);
 	    }
-	    break;
 	    
-	case ActionType.FALL:
+	} else if (action instanceof PlatformerFallAction) {
 	    let path = this.findSimplePath(cur, dst);
 	    for (let i = 0; i < path.length; i++) {
 		let r0 = actor.getGridBoxAt(path[i]);
@@ -160,21 +156,21 @@ class PlatformerActionRunner extends ActionRunner {
 	    if (cur.equals(dst)) {
 		this.setAction(action.next);
 	    }
-	    break;
 	    
-	case ActionType.JUMP:
+	} else if (action instanceof PlatformerJumpAction) {
 	    if (actor.canJump() && actor.canFall() &&
 		actor.isClearedFor(dst)) {
 		actor.jumpToward(dst);
 		// once you leap, the action is considered finished.
-		this.setAction(new PlatformerAction(
-		    dst, action.next, action.next.cost,
-		    null, ActionType.FALL));
+		this.setAction(new PlatformerFallAction(
+		    dst, action.next, action.next.cost, null));
 	    } else {
 		// not landed, holding something, or has no clearance.
 		actor.moveToward(cur);
 	    }
-	    break;
+
+	} else {
+	    this.setAction(action.next);
 	}
     }
 
@@ -249,24 +245,20 @@ class PlatformerActionRunner extends ActionRunner {
 class PlanningEntity extends PlatformerEntity implements PlatformerActor {
 
     grid: GridConfig;
-    plan: PlanMap;
+    plan: PlatformerPlanMap;
     gridbox: Rect = null;
 
     private _jumppts: Vec2[] = null;
     private _fallpts: Vec2[] = null;
     speed: number = 4;
     
-    obstacle: RangeMap = null;
-    grabbable: RangeMap = null;
-    stoppable: RangeMap = null;
-
     static debug: boolean = false;
 
     constructor(grid: GridConfig, tilemap: TileMap,
 		physics: PhysicsConfig, pos: Vec2) {
 	super(tilemap, physics, pos);
 	this.grid = grid;
-	this.plan = new PlatformerPlanMap(grid);
+	this.plan = new PlatformerPlanMap(this.grid, tilemap, physics);
     }
 
     setHitbox(hitbox: Rect) {
@@ -277,24 +269,11 @@ class PlanningEntity extends PlatformerEntity implements PlatformerActor {
 	    Math.ceil(hitbox.height/gs)*gs);
     }
 
-    updateRangeMaps() {
-	this.obstacle = this.tilemap.getRangeMap(
-	    'obstacle', this.physics.isObstacle);
-	this.grabbable = this.tilemap.getRangeMap(
-	    'grabbable', this.physics.isGrabbable);
-	this.stoppable = this.tilemap.getRangeMap(
-	    'stoppable', this.physics.isStoppable);
-    }
-
     getAction(goal: Vec2, start: Vec2=null, size=10, maxcost=20) {
 	goal = this.grid.coord2grid(goal);
-	start = (start !== null)? start : this.getGridPos();
-	this.updateRangeMaps();
+	start = this.grid.coord2grid((start !== null)? start : this.pos);
 	let range = goal.expand(size, size);
-	if (this.plan.build(this, goal, range, start, maxcost)) {
-	    return this.plan.getAction(start.x, start.y) as PlatformerAction;
-	}
-	return null;
+	return this.plan.build(this, goal, range, start, maxcost) as PlatformerAction;
     }
 
     // PlatformerActor methods
@@ -324,24 +303,24 @@ class PlanningEntity extends PlatformerEntity implements PlatformerActor {
     }
     canMoveTo(p: Vec2) {
 	let hitbox = this.getGridBoxAt(p);
-	return !this.obstacle.exists(this.tilemap.coord2map(hitbox));
+	return !this.plan.obstacle.exists(this.tilemap.coord2map(hitbox));
     }
     canGrabAt(p: Vec2) {
 	let hitbox = this.getGridBoxAt(p);
-	return this.grabbable.exists(this.tilemap.coord2map(hitbox));
+	return this.plan.grabbable.exists(this.tilemap.coord2map(hitbox));
     }
     canStandAt(p: Vec2) {
 	let hitbox = this.getGridBoxAt(p).move(0, this.grid.gridsize);
-	return this.stoppable.exists(this.tilemap.coord2map(hitbox));
+	return this.plan.stoppable.exists(this.tilemap.coord2map(hitbox));
     }
     canClimbUp(p: Vec2) {
 	let hitbox = this.getGridBoxAt(p);
-	return this.grabbable.exists(this.tilemap.coord2map(hitbox));
+	return this.plan.grabbable.exists(this.tilemap.coord2map(hitbox));
     }
     canClimbDown(p: Vec2) {
 	let rect = this.collider.getAABB();
 	let hitbox = this.getGridBoxAt(p).move(0, rect.height);
-	return this.grabbable.exists(this.tilemap.coord2map(hitbox));
+	return this.plan.grabbable.exists(this.tilemap.coord2map(hitbox));
     }
     canFallTo(p0: Vec2, p1: Vec2) {
 	//  +--+.....
@@ -360,7 +339,7 @@ class PlanningEntity extends PlatformerEntity implements PlatformerActor {
 	let y0 = Math.min(hb0.y, hb1.y);
 	let y1 = Math.max(hb0.y1(), hb1.y1());
 	let rect = new Rect(x0, y0, x1-x0, y1-y0);
-	return !this.stoppable.exists(this.tilemap.coord2map(rect));
+	return !this.plan.stoppable.exists(this.tilemap.coord2map(rect));
     }
     canJumpTo(p0: Vec2, p1: Vec2) {
 	//  .....+--+
@@ -378,7 +357,7 @@ class PlanningEntity extends PlatformerEntity implements PlatformerActor {
 	let x1 = Math.max(xc, hb0.x1());
 	let y0 = Math.min(hb0.y, hb1.y);
 	let y1 = Math.max(hb0.y1(), hb1.y1());
-	if (this.obstacle.exists(
+	if (this.plan.obstacle.exists(
 	    this.tilemap.coord2map(new Rect(x0, y0, x1-x0, y1-y0)))) {
 	    return false;
 	}
@@ -392,9 +371,9 @@ class PlanningEntity extends PlatformerEntity implements PlatformerActor {
 	let dx = sign(p1.x - p0.x);
 	let rect1 = (0 < dx)? rect.resize(1, 1, 'ne') : rect.resize(1, 1, 'nw');
 	let rect2 = (0 < dx)? rect.resize(1, 1, 'se') : rect.resize(1, 1, 'sw');
-	if (this.obstacle.exists(rect1) &&
-	    !this.obstacle.exists(rect1.move(-dx,0)) &&
-	    this.obstacle.exists(rect2)) {
+	if (this.plan.obstacle.exists(rect1) &&
+	    !this.plan.obstacle.exists(rect1.move(-dx,0)) &&
+	    this.plan.obstacle.exists(rect2)) {
 	    return false;
 	}
 	return true;
@@ -423,6 +402,6 @@ class PlanningEntity extends PlatformerEntity implements PlatformerActor {
 	let y0 = Math.min(hb0.y, hb1.y);
 	let y1 = Math.max(hb0.y1(), hb1.y1());
 	let rect = new Rect(x0, y0, x1-x0, y1-y0);
-	return !this.stoppable.exists(this.tilemap.coord2map(rect));
+	return !this.plan.stoppable.exists(this.tilemap.coord2map(rect));
     }
 }
