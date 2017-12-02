@@ -315,6 +315,7 @@ class SimpleSpriteSheet extends SpriteSheet {
 
     /** Returns an ImageSource at the given cell. */
     get(x:number, y=0, w=1, h=1, origin: Vec2=null): ImageSource {
+	if (x < 0 || this.imgsrcs.length <= x || y != 0) return null;
 	return this.imgsrcs[x];
     }
 
