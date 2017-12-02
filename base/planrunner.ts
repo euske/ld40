@@ -111,11 +111,19 @@ class ActionRunner extends Task {
 	this.action = action;
 	if (action === null || action.next === null) {
 	    this.stop();
-	    log("setAction: stopped");
+	    //log("setAction: end");
 	} else {
 	    this.lifetime = this.timeout;
-	    log("setAction: "+action);
+	    //log("setAction: "+action);
 	}
+    }
+
+    update() {
+	this.execute(this.action);
+    }
+
+    execute(action: PlanAction) {
+	// [OVERRIDE]
     }
 }
 
@@ -128,9 +136,8 @@ class PlatformerActionRunner extends ActionRunner {
 	super(actor, action, timeout);
     }
     
-    update() {
+    execute(action: PlanAction) {
 	let actor = this.actor as PlatformerActor;;
-	let action = this.action;
 	let cur = actor.getGridPos();
 	let dst = action.next.p;
 
@@ -269,10 +276,10 @@ class PlanningEntity extends PlatformerEntity implements PlatformerActor {
 	    Math.ceil(hitbox.height/gs)*gs);
     }
 
-    getAction(goal: Vec2, start: Vec2=null, size=10, maxcost=20) {
+    buildPlan(goal: Vec2, start: Vec2=null, size=0, maxcost=20) {
 	goal = this.grid.coord2grid(goal);
 	start = this.grid.coord2grid((start !== null)? start : this.pos);
-	let range = goal.expand(size, size);
+	let range = (size == 0)? this.tilemap.bounds : goal.inflate(size, size);
 	return this.plan.build(this, goal, range, start, maxcost) as PlatformerAction;
     }
 

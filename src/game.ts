@@ -136,8 +136,9 @@ class Player extends PlanningEntity {
     
     setPlan(item: Item, target: Target) {
 	let pos1 = this.scene.basket.pos;
-	let action1 = this.getAction(pos1);
-	action1.chain(this.getAction(target.pos, pos1));
+	let action1 = this.buildPlan(pos1);
+	//assert(action1 !== null);
+	action1.chain(this.buildPlan(target.pos, pos1));
 	let runner = new PlatformerActionRunner(this, action1);
 	this.tasklist.add(runner);
     }

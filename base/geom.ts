@@ -130,6 +130,9 @@ class Vec2 {
 	return new Rect(this.x, this.y).expand(dw, dh, anchor);
     }
     
+    inflate(dw: number, dh: number): Rect {
+	return this.expand(dw*2, dh*2);
+    }
 }
 
 

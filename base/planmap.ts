@@ -7,11 +7,13 @@
 //  GridConfig
 // 
 class GridConfig {
-    
+
+    tilemap: TileMap;
     gridsize: number;
     offset: number;
 
     constructor(tilemap:TileMap, resolution=1) {
+	this.tilemap = tilemap;
 	this.gridsize = tilemap.tilesize/resolution;
 	this.offset = fmod(this.gridsize, tilemap.tilesize)/2;
     }
@@ -26,6 +28,10 @@ class GridConfig {
 	return new Vec2(
 	    int((p.x+.5)*this.gridsize)+this.offset,
 	    int((p.y+.5)*this.gridsize)+this.offset);
+    }
+
+    clip(rect: Rect) {
+	return this.tilemap.bounds.intersection(rect);
     }
 }
 
@@ -157,6 +163,8 @@ class PlanMap {
 
     build(actor: PlanActor, goal: Vec2, range: Rect,
 	  start: Vec2=null, maxcost=Infinity): PlanAction {
+	range = this.grid.clip(range);
+	//log("build: goal="+goal+", start="+start+", range="+range+", maxcost="+maxcost);
 	this._map = {};
 	this._queue = [];
 	this.addAction(start, new PlanAction(goal));
