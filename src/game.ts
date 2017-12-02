@@ -37,6 +37,11 @@ addInitHook(() => {
 class Target extends Entity {
 
     focused: boolean = false;
+
+    update() {
+	super.update();
+	this.sprite.alpha = (this.focused)? 0.5 : 1.0;
+    }
 }
 
 
@@ -49,10 +54,17 @@ class Washer extends Target {
 	this.skin = new RectImageSource('white', new Rect(-16,-16,32,32));
 	this.collider = this.skin.getBounds();
     }
+}
 
-    update() {
-	super.update();
-	this.sprite.alpha = (this.focused)? 0.5 : 1.0;
+
+//  Dryer
+//
+class Dryer extends Target {
+    
+    constructor(pos: Vec2) {
+	super(pos);
+	this.skin = new RectImageSource('cyan', new Rect(-16,-16,32,32));
+	this.collider = this.skin.getBounds();
     }
 }
 
@@ -87,6 +99,19 @@ class Basket extends Entity {
 }
 
 
+//  Exit
+//
+class Exit extends Entity {
+    
+    constructor(pos: Vec2) {
+	super(pos);
+	this.skin = new RectImageSource('#008800', new Rect(-16,-16,32,32));
+	this.collider = this.skin.getBounds();
+    }
+    
+}
+
+
 //  Player
 //
 class Player extends PlanningEntity {
@@ -103,7 +128,6 @@ class Player extends PlanningEntity {
 
     update() {
 	super.update();
-	this.move();
     }
 
     getFencesFor(range: Rect, v: Vec2, context: string): Rect[] {
@@ -111,10 +135,9 @@ class Player extends PlanningEntity {
     }
     
     setPlan(item: Item, target: Target) {
-	let runner = this.getPlan(target.pos)
-	if (runner !== null) {
-	    this.startPlan(runner);
-	}
+	let action = this.getAction(target.pos)
+	let runner = new PlatformerActionRunner(this, action);
+	this.tasklist.add(runner);
     }
 }
 
@@ -159,10 +182,10 @@ class Game extends GameScene {
 	
 	const MAP = [
 	    "0000000000",
-	    "0004444440",
-	    "0021111112",
-	    "0020000002",
-	    "3924444442",
+	    "0005555500",
+	    "0021111120",
+	    "0020000020",
+	    "3926666624",
 	    "1111111111",
 	];
 	this.physics = new PhysicsConfig();
@@ -188,7 +211,13 @@ class Game extends GameScene {
 		this.add(new Basket(rect.center()));
 		break;
 	    case 4:
+		this.add(new Exit(rect.center()));
+		break;
+	    case 5:
 		this.add(new Washer(rect.center()));
+		break;
+	    case 6:
+		this.add(new Dryer(rect.center()));
 		break;
 	    }
 	    return false;
