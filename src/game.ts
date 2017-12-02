@@ -4,6 +4,8 @@
 /// <reference path="../base/layer.ts" />
 /// <reference path="../base/entity.ts" />
 /// <reference path="../base/tilemap.ts" />
+/// <reference path="../base/planmap.ts" />
+/// <reference path="../base/planrunner.ts" />
 /// <reference path="../base/text.ts" />
 /// <reference path="../base/scene.ts" />
 /// <reference path="../base/app.ts" />
@@ -26,7 +28,6 @@ addInitHook(() => {
 	new RectImageSource('#000088', new Rect(0,0,32,32)),
 	new RectImageSource('#cc0000', new Rect(0,0,32,32)),
 	new RectImageSource('#cccc00', new Rect(0,0,32,32)),
-	new RectImageSource('#880000', new Rect(0,0,32,32)),
     ]);
 });
 
@@ -73,24 +74,47 @@ class Cloth extends Item {
 }
 
 
+//  Basket
+//
+class Basket extends Entity {
+    
+    constructor(pos: Vec2) {
+	super(pos);
+	this.skin = new RectImageSource('#880000', new Rect(-16,-16,32,32));
+	this.collider = this.skin.getBounds();
+    }
+    
+}
+
+
 //  Player
 //
-class Player extends Entity {
+class Player extends PlanningEntity {
 
     scene: Game;
 
     constructor(scene: Game, pos: Vec2) {
-	super(pos);
+	super(scene.grid, scene.tilemap, scene.physics, pos);
 	this.scene = scene;
 	this.skin = new RectImageSource('green', new Rect(-16,-16,32,32));
 	this.collider = this.skin.getBounds();
+	this.setHitbox(this.collider as Rect);
     }
 
     update() {
 	super.update();
+	this.move();
     }
 
+    getFencesFor(range: Rect, v: Vec2, context: string): Rect[] {
+	return [this.scene.screen];
+    }
+    
     setPlan(item: Item, target: Target) {
+	let runner = this.getPlan(target.pos)
+	if (runner !== null) {
+	    this.startPlan(runner);
+	}
     }
 }
 
@@ -118,7 +142,11 @@ class Cursor extends FixedSprite {
 // 
 class Game extends GameScene {
 
+    physics: PhysicsConfig;
     tilemap: TileMap;
+    grid: GridConfig;
+    front: SpriteLayer;
+
     scoreBox: TextBox;
     score: number;
 
@@ -137,19 +165,27 @@ class Game extends GameScene {
 	    "3924444442",
 	    "1111111111",
 	];
+	this.physics = new PhysicsConfig();
+	this.physics.maxspeed = new Vec2(8, 8);
+	this.physics.isObstacle = ((c:number) => { return c == 1; });
+	this.physics.isGrabbable = ((c:number) => { return c == 2; });
+	this.physics.isStoppable = ((c:number) => { return c == 1 || c == 2; });
 	this.tilemap = new TileMap(32, 10, 6, MAP.map(
 	    (v:string) => { return str2array(v); }
 	));
+	this.grid = new GridConfig(this.tilemap);
+	this.front = this.camera.newLayer();
 	
 	let p = this.tilemap.findTile((c:number) => { return c == 9; });
 	this.player = new Player(this, this.tilemap.map2coord(p).center());
-	this.add(this.player);
+	this.add(this.player, this.front);
 	
 	this.tilemap.apply((x:number, y:number, c:number) => {
 	    let rect = this.tilemap.map2coord(new Vec2(x,y));
 	    switch (c) {
 	    case 3:
-		this.add(new Cloth(rect.center()));
+		this.add(new Cloth(rect.center()), this.front);
+		this.add(new Basket(rect.center()));
 		break;
 	    case 4:
 		this.add(new Washer(rect.center()));
@@ -188,7 +224,16 @@ class Game extends GameScene {
 
     onMouseDown(p: Vec2, button: number) {
 	super.onMouseDown(p, button);
-	let sprite = this.camera.mouseActive;
+        let findItem = ((sprite: Sprite) => {
+	    if (sprite instanceof EntitySprite) {
+		let entity = sprite.entity;
+		if (entity instanceof Item) {
+		    return sprite.getBounds().containsPt(p);
+		}
+	    }
+	    return false;
+	});
+	let sprite = this.front.apply(findItem);
 	if (sprite instanceof EntitySprite) {
 	    let entity = sprite.entity;
 	    if (this._cursor === null && entity instanceof Item) {
@@ -217,21 +262,21 @@ class Game extends GameScene {
 	super.onMouseMove(p);
 	if (this._cursor !== null) {
 	    this._cursor.moveTo(p);
-	    let bounds = this._cursor.getBounds();
-            let f = ((sprite: Sprite) => {
-		if (sprite instanceof EntitySprite) {
-		    let entity = sprite.entity;
-		    if (entity instanceof Target) {
-			return entity.getCollider().overlaps(bounds);
-		    }
-		}
-		return false;
-	    });
 	    if (this._target !== null) {
 		this._target.focused = false;
 	    }
 	    this._target = null;
-	    let sprite = this.layer.apply(f);
+	    let bounds = this._cursor.getBounds();
+            let findTarget = ((sprite: Sprite) => {
+		if (sprite instanceof EntitySprite) {
+		    let entity = sprite.entity;
+		    if (entity instanceof Target) {
+			return sprite.getBounds().overlaps(bounds);
+		    }
+		}
+		return false;
+	    });
+	    let sprite = this.layer.apply(findTarget);
 	    if (sprite instanceof EntitySprite) {
 		let entity = sprite.entity;
 		if (entity instanceof Target) {

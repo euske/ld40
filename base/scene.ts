@@ -156,13 +156,13 @@ class GameScene extends Scene {
 	this.camera.render(ctx);
     }
 
-    add(task: Task) {
+    add(task: Task, layer: SpriteLayer=null, field: EntityField=null) {
 	this.tasklist.add(task);
 	if (task instanceof Widget) {
-	    task.layer = this.layer;
+	    task.layer = (layer !== null)? layer : this.layer;
 	}
 	if (task instanceof Entity) {
-	    task.field = this.field;
+	    task.field = (field !== null)? field : this.field;
 	}
     }
 
