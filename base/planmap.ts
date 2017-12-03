@@ -74,22 +74,38 @@ class PlanAction {
 	return (null as string);
     }
 
-    getLast() {
+    getList() {
+	let a: PlanAction[] = [];
 	let action: PlanAction = this;
-	while (action.next !== null) {
+	while (action !== null) {
+	    a.push(action);
 	    action = action.next;
 	}
-	// assert(action.next === null)
-	return action;
-    }
-
-    chain(action: PlanAction) {
-	this.getLast().next = action;
-	return action;
+	return a;
+	
     }
     
+    chain(next: PlanAction) {
+	let action: PlanAction = this;
+	while (true) {
+	    if (action.next === null ||
+		action.next instanceof FinishAction) {
+		action.next = next;
+		break;
+	    }
+	    action = action.next;
+	}
+	return next;
+    }
+
     toString() {
 	return ('<PlanAction('+this.p.x+','+this.p.y+'): cost='+this.cost+'>');
+    }
+}
+
+class FinishAction extends PlanAction {
+    toString() {
+	return ('<FinishAction('+this.p.x+','+this.p.y+')>');
     }
 }
 
@@ -167,28 +183,21 @@ class PlanMap {
 	//log("build: goal="+goal+", start="+start+", range="+range+", maxcost="+maxcost);
 	this._map = {};
 	this._queue = [];
-	this.addAction(start, new PlanAction(goal));
+	this.addAction(null, new FinishAction(goal));
 	while (0 < this._queue.length) {
-	    let action = this._queue.shift().action;
-	    if (maxcost <= action.cost) continue;
+	    let entry = this._queue.shift();
+	    let action = entry.action;
 	    if (start !== null && start.equals(action.p)) return action;
+	    if (maxcost <= action.cost) continue;
 	    this.expandPlan(actor, range, action, start);
 	    // A* search.
 	    if (start !== null) {
-		this._queue.sort(
-		    (a:PlanActionEntry,b:PlanActionEntry) => { return a.total-b.total; });
+		this._queue.sort((a:PlanActionEntry,b:PlanActionEntry) => {
+		    return a.total-b.total;
+		});
 	    }
 	}
 	return null;
-    }
-
-    getAction(x: number, y: number, context: string=null) {
-	let k = getKey(x, y, context);
-	if (this._map.hasOwnProperty(k)) {
-	    return this._map[k];
-	} else {
-	    return null;
-	}
     }
 
     addAction(start: Vec2, action: PlanAction) {
@@ -200,6 +209,15 @@ class PlanMap {
 			(Math.abs(start.x-action.p.x)+
 			 Math.abs(start.y-action.p.y)));
 	    this._queue.push(new PlanActionEntry(action, dist+action.cost));
+	}
+    }
+
+    getAction(x: number, y: number, context: string=null) {
+	let k = getKey(x, y, context);
+	if (this._map.hasOwnProperty(k)) {
+	    return this._map[k];
+	} else {
+	    return null;
 	}
     }
 
@@ -323,46 +341,46 @@ class PlatformerPlanMap extends PlanMap {
 	    'stoppable', physics.isStoppable);
     }
     
-    expandPlan(actor: PlatformerActor, range: Rect,
-	       a0: PlatformerAction, start: Vec2=null) {
-	let p = a0.p;
-	// assert(range.containsPt(p));
+    expandPlan(actor: PlatformerActor, range: Rect, a0: PlatformerAction, start: Vec2=null) {
+	let p0 = a0.p;
+	let cost0 = a0.cost;
+	// assert(range.containsPt(p0));
 
 	// try climbing down.
-	let dp = new Vec2(p.x, p.y-1);
+	let dp = new Vec2(p0.x, p0.y-1);
 	if (range.containsPt(dp) &&
 	    actor.canClimbDown(dp)) {
 	    this.addAction(start, new PlatformerClimbAction(
-		dp, a0, a0.cost+1, null));
+		dp, a0, cost0+1, null));
 	}
 	// try climbing up.
-	let up = new Vec2(p.x, p.y+1);
+	let up = new Vec2(p0.x, p0.y+1);
 	if (range.containsPt(up) &&
 	    actor.canClimbUp(up)) {
 	    this.addAction(start, new PlatformerClimbAction(
-		up, a0, a0.cost+1, null));
+		up, a0, cost0+1, null));
 	}
 
 	// for left and right.
 	for (let vx = -1; vx <= +1; vx += 2) {
 
 	    // try walking.
-	    let wp = new Vec2(p.x-vx, p.y);
+	    let wp = new Vec2(p0.x-vx, p0.y);
 	    if (range.containsPt(wp) &&
 		actor.canMoveTo(wp) &&
 		(actor.canGrabAt(wp) ||
 		 actor.canStandAt(wp))) {
 		this.addAction(start, new PlatformerWalkAction(
-		    wp, a0, a0.cost+1, null));
+		    wp, a0, cost0+1, null));
 	    }
 
 	    // try falling.
-	    if (actor.canStandAt(p)) {
+	    if (actor.canStandAt(p0)) {
 		let fallpts = actor.getFallPoints();
 		for (let v of fallpts) {
 		    // try the v.x == 0 case only once.
 		    if (v.x === 0 && vx < 0) continue;
-		    let fp = p.move(-v.x*vx, -v.y);
+		    let fp = p0.move(-v.x*vx, -v.y);
 		    if (!range.containsPt(fp)) continue;
 		    if (!actor.canMoveTo(fp)) continue;
 		    //  +--+....  [vx = +1]
@@ -371,12 +389,12 @@ class PlatformerPlanMap extends PlanMap {
 		    // ##.......
 		    //   ...+--+
 		    //   ...|  |
-		    //   ...+-X+ (p.x,p.y)
+		    //   ...+-X+ (p0.x,p0.y)
 		    //     ######
-		    if (actor.canFallTo(fp, p)) {
+		    if (actor.canFallTo(fp, p0)) {
 			let dc = Math.abs(v.x)+Math.abs(v.y);
 			this.addAction(start, new PlatformerFallAction(
-			    fp, a0, a0.cost+dc, null));
+			    fp, a0, cost0+dc, null));
 		    }
 		}
 	    }
@@ -387,44 +405,44 @@ class PlatformerPlanMap extends PlanMap {
 		for (let v of jumppts) {
 		    // try the v.x == 0 case only once.
 		    if (v.x === 0 && vx < 0) continue;
-		    let jp = p.move(-v.x*vx, -v.y);
+		    let jp = p0.move(-v.x*vx, -v.y);
 		    if (!range.containsPt(jp)) continue;
 		    if (!actor.canMoveTo(jp)) continue;
 		    if (!actor.canGrabAt(jp) && !actor.canStandAt(jp)) continue;
 		    //  ....+--+  [vx = +1]
 		    //  ....|  |
-		    //  ....+-X+ (p.x,p.y) tip point
+		    //  ....+-X+ (p0.x,p0.y) tip point
 		    //  .......
 		    //  +--+...
 		    //  |  |...
 		    //  +-X+... (jp.x,jp.y) original position.
 		    // ######
-		    if (actor.canJumpTo(jp, p)) {
+		    if (actor.canJumpTo(jp, p0)) {
 			let dc = Math.abs(v.x)+Math.abs(v.y);
 			this.addAction(start, new PlatformerJumpAction(
-			    jp, a0, a0.cost+dc, null));
+			    jp, a0, cost0+dc, null));
 		    }
 		}
-	    } else if (actor.canStandAt(p)) {
+	    } else if (actor.canStandAt(p0)) {
 		let jumppts = actor.getJumpPoints();
 		for (let v of jumppts) {
 		    if (v.x === 0) continue;
-		    let jp = p.move(-v.x*vx, -v.y);
+		    let jp = p0.move(-v.x*vx, -v.y);
 		    if (!range.containsPt(jp)) continue;
 		    if (!actor.canMoveTo(jp)) continue;
 		    if (!actor.canGrabAt(jp) && !actor.canStandAt(jp)) continue;
 		    //  ....+--+  [vx = +1]
 		    //  ....|  |
-		    //  ....+-X+ (p.x,p.y) tip point
+		    //  ....+-X+ (p0.x,p0.y) tip point
 		    //  .....##
 		    //  +--+...
 		    //  |  |...
 		    //  +-X+... (jp.x,jp.y) original position.
 		    // ######
-		    if (actor.canJumpTo(jp, p)) {
+		    if (actor.canJumpTo(jp, p0)) {
 			let dc = Math.abs(v.x)+Math.abs(v.y);
 			this.addAction(start, new PlatformerJumpAction(
-			    jp, a0, a0.cost+dc, null));
+			    jp, a0, cost0+dc, null));
 		    }
 		}
 	    }

@@ -114,6 +114,20 @@ class Exit extends Entity {
 
 //  Player
 //
+class PlayerAction extends PlanAction {
+    toString() {
+	return ('<PlayerAction('+this.p.x+','+this.p.y+')>');
+    }
+}
+class PlayerActionRunner extends PlatformerActionRunner {
+    execute(action: PlanAction): PlanAction {
+	log("action="+action);
+	if (action instanceof PlayerAction) {
+	    return action.next;
+	}
+	return super.execute(action);
+    }
+}
 class Player extends PlanningEntity {
 
     scene: Game;
@@ -135,11 +149,13 @@ class Player extends PlanningEntity {
     }
     
     setPlan(item: Item, target: Target) {
-	let pos1 = this.scene.basket.pos;
-	let action1 = this.buildPlan(pos1);
-	//assert(action1 !== null);
-	action1.chain(this.buildPlan(target.pos, pos1));
-	let runner = new PlatformerActionRunner(this, action1);
+	let pos0 = this.grid.coord2grid(this.scene.basket.pos);
+	let pos1 = this.grid.coord2grid(target.pos);
+	let action = this.buildPlan(pos0);
+	//assert(action !== null);
+	action.chain(new PlayerAction(pos0));
+	action.chain(this.buildPlan(pos1, pos0));
+	let runner = new PlayerActionRunner(this, action);
 	this.tasklist.add(runner);
     }
 }

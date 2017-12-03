@@ -100,30 +100,30 @@ class ActionRunner extends Task {
 	this.actor = actor;
 	this.timeout = timeout;
 
-	this.setAction(action);
+	this.action = action;
+	this.lifetime = timeout;
     }
     
     toString() {
 	return ('<ActionRunner: actor='+this.actor+', action='+this.action+'>');
     }
 
-    setAction(action: PlanAction) {
-	this.action = action;
-	if (action === null || action.next === null) {
-	    this.stop();
-	    //log("setAction: end");
-	} else {
-	    this.lifetime = this.timeout;
-	    //log("setAction: "+action);
+    update() {
+	let action = this.action;
+	if (action !== null) {
+	    action = this.execute(action);
+	    if (action === null) {
+		this.stop();
+	    } else if (action !== this.action) {
+		this.lifetime = this.timeout;
+	    }
+	    this.action = action;
 	}
     }
 
-    update() {
-	this.execute(this.action);
-    }
-
-    execute(action: PlanAction) {
+    execute(action: PlanAction): PlanAction {
 	// [OVERRIDE]
+	return action.next;
     }
 }
 
@@ -136,7 +136,7 @@ class PlatformerActionRunner extends ActionRunner {
 	super(actor, action, timeout);
     }
     
-    execute(action: PlanAction) {
+    execute(action: PlanAction): PlanAction {
 	let actor = this.actor as PlatformerActor;;
 	let cur = actor.getGridPos();
 	let dst = action.next.p;
@@ -146,7 +146,7 @@ class PlatformerActionRunner extends ActionRunner {
 	    action instanceof PlatformerClimbAction) {
 	    actor.moveToward(dst);
 	    if (cur.equals(dst)) {
-		this.setAction(action.next);
+		return action.next;
 	    }
 	    
 	} else if (action instanceof PlatformerFallAction) {
@@ -161,7 +161,7 @@ class PlatformerActionRunner extends ActionRunner {
 		}
 	    }
 	    if (cur.equals(dst)) {
-		this.setAction(action.next);
+		return action.next;
 	    }
 	    
 	} else if (action instanceof PlatformerJumpAction) {
@@ -169,23 +169,23 @@ class PlatformerActionRunner extends ActionRunner {
 		actor.isClearedFor(dst)) {
 		actor.jumpToward(dst);
 		// once you leap, the action is considered finished.
-		this.setAction(new PlatformerFallAction(
-		    dst, action.next, action.next.cost, null));
+		return new PlatformerFallAction(
+		    dst, action.next, action.next.cost, null);
 	    } else {
 		// not landed, holding something, or has no clearance.
 		actor.moveToward(cur);
 	    }
 
-	} else {
-	    this.setAction(action.next);
 	}
+	
+	return action;
     }
 
     // findSimplePath(x0, y0, x1, x1, cb): 
     //   returns a list of points that a character can proceed without being blocked.
     //   returns null if no such path exists. This function takes O(w*h).
     //   Note: this returns only a straightforward path without any detour.
-    private findSimplePath(p0: Vec2, p1: Vec2) {
+    findSimplePath(p0: Vec2, p1: Vec2) {
 	
 	class PathEntry {
 	    p: Vec2;
@@ -277,8 +277,7 @@ class PlanningEntity extends PlatformerEntity implements PlatformerActor {
     }
 
     buildPlan(goal: Vec2, start: Vec2=null, size=0, maxcost=20) {
-	goal = this.grid.coord2grid(goal);
-	start = this.grid.coord2grid((start !== null)? start : this.pos);
+	start = (start !== null)? start : this.getGridPos();
 	let range = (size == 0)? this.tilemap.bounds : goal.inflate(size, size);
 	return this.plan.build(this, goal, range, start, maxcost) as PlatformerAction;
     }
