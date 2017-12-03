@@ -329,7 +329,7 @@ class PlatformerActionRunner extends ActionRunner {
 
 	}
 	
-	return action;
+	return super.execute(action);
     }
 
     // findSimplePath(x0, y0, x1, x1, cb): 

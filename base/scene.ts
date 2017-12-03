@@ -157,13 +157,14 @@ class GameScene extends Scene {
     }
 
     add(task: Task, layer: SpriteLayer=null, field: EntityField=null) {
-	this.tasklist.add(task);
 	if (task instanceof Widget) {
 	    task.layer = (layer !== null)? layer : this.layer;
+	    log("add: "+task+", "+task.layer);
 	}
 	if (task instanceof Entity) {
 	    task.field = (field !== null)? field : this.field;
 	}
+	this.tasklist.add(task);
     }
 
     onMouseDown(p: Vec2, button: number) {

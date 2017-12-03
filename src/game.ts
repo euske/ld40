@@ -202,7 +202,7 @@ class PlayerActionRunner extends PlatformerActionRunner {
     }
 
     execute(action: PlanAction): PlanAction {
-	log("action="+action);
+	log("execute: "+action);
 	if (action instanceof PickAction) {
 	    action.src.release(action.item);
 	    (this.actor as Player).take(action.item);
@@ -222,7 +222,6 @@ class Player extends PlanningEntity {
     item: Item = null;
 
     _action: PlanAction = null;
-    _dir: number = 1;
     _phase: number = 0;
 
     constructor(scene: Game, pos: Vec2) {
@@ -236,24 +235,27 @@ class Player extends PlanningEntity {
 
     setAction(action: PlanAction) {
 	this._action = action;
-	this._dir = (action instanceof PlatformerAction)?
-	    (action.next.p.x - this.getGridPos().x) : +1;
+	if (action instanceof PlatformerClimbAction) {
+	    ;
+	} else if (action instanceof PlatformerAction) {
+	    let dx = (action.next.p.x - this.getGridPos().x);
+	    if (dx != 0) {
+		this.sprite.scale = new Vec2(dx, 1);
+	    }
+	}	
     }
 
     update() {
 	super.update();
 	if (this._action instanceof PlatformerWalkAction) {
 	    this.skin = SPRITES.get((this.item !== null)? 3 : 2, this._phase);
-	    this.sprite.scale = new Vec2(this._dir, 1);
 	    this._phase = phase(getTime(), 0.4);
 	} else if (this._action instanceof PlatformerClimbAction) {
 	    this.skin = SPRITES.get(4, this._phase);
-	    this.sprite.scale = new Vec2(1, 1);
-	    this._phase = phase(getTime(), 0.4);
+	    this._phase = phase(getTime(), 0.6);
 	} else if (this._action instanceof PlatformerJumpAction ||
 		   this._action instanceof PlatformerFallAction) {
 	    this.skin = SPRITES.get((this.item !== null)? 3 : 2, this._phase);
-	    this.sprite.scale = new Vec2(this._dir, 1);
 	} else {
 	    this.skin = SPRITES.get(1,0);
 	}	    
@@ -271,6 +273,16 @@ class Player extends PlanningEntity {
 	this.item = null;
     }
     
+    getSprites(): Sprite[] {
+	let sprites = super.getSprites();
+	if (this.item !== null &&
+	    this._action instanceof PlatformerAction &&
+	    !(this._action instanceof PlatformerClimbAction)) {
+	    sprites.push(this.item.sprite);
+	}
+	return sprites;
+    }
+
     getFencesFor(range: Rect, v: Vec2, context: string): Rect[] {
 	return [this.scene.screen];
     }
@@ -318,11 +330,12 @@ class Game extends GameScene {
     physics: PhysicsConfig;
     tilemap: TileMap;
     grid: GridConfig;
-    layer1: SpriteLayer;
+    itemLayer: SpriteLayer;
     layer2: SpriteLayer;
     basket: Basket;
     exit: Exit;
 
+    bannerBox: TextBox;
     scoreBox: TextBox;
     score: number;
 
@@ -350,7 +363,7 @@ class Game extends GameScene {
 	    (v:string) => { return str2array(v); }
 	));
 	this.grid = new GridConfig(this.tilemap);
-	this.layer1 = this.camera.newLayer();
+	this.itemLayer = this.camera.newLayer();
 	this.layer2 = this.camera.newLayer();
 	
 	this.tilemap.apply((x:number, y:number, c:number) => {
@@ -358,7 +371,7 @@ class Game extends GameScene {
 	    switch (c) {
 	    case 3:
 		this.basket = new Basket(pos);
-		this.add(new Cloth(pos, this.basket), this.layer2);
+		this.add(new Cloth(pos, this.basket), this.itemLayer);
 		this.add(this.basket);
 		break;
 	    case 4:
@@ -373,7 +386,7 @@ class Game extends GameScene {
 		break;
 	    case 9:
 		this.player = new Player(this, pos);
-		this.add(this.player, this.layer1);
+		this.add(this.player, this.layer2);
 		break;
 	    }
 	    if (3 <= c) {
@@ -381,10 +394,13 @@ class Game extends GameScene {
 	    }
 	    return false;
 	});
-	
+
 	this._cursor = null;
 	this._target = null;
-	
+
+	this.bannerBox = new TextBox(
+	    this.screen.resize(this.screen.width, 64, 'n'), FONT);
+	this.bannerBox.putText(['DRAG & DROP LAUNDRIES!'], 'center', 'center');
 	this.scoreBox = new TextBox(this.screen.inflate(-8,-8), FONT);
 	this.score = 0;
 	this.updateScore();
@@ -402,26 +418,31 @@ class Game extends GameScene {
     render(ctx: CanvasRenderingContext2D) {
 	ctx.fillStyle = 'rgb(0,0,0)';
 	fillRect(ctx, this.screen);
+	ctx.save();
+	ctx.translate(0, this.screen.height-this.tilemap.bounds.height);
 	this.tilemap.renderFromBottomLeft(
 	    ctx, (x,y,c) => { return TILES.get(0); });
 	this.tilemap.renderFromBottomLeft(
 	    ctx, (x,y,c) => { return (c != 0)? TILES.get(c) : null; });
 	super.render(ctx);
+	ctx.restore();
 	this.scoreBox.render(ctx);
+	this.bannerBox.render(ctx);
     }
 
     onMouseDown(p: Vec2, button: number) {
 	super.onMouseDown(p, button);
+	let pos = new Vec2(p.x, p.y-(this.screen.height-this.tilemap.bounds.height));
         let findItem = ((sprite: Sprite) => {
 	    if (sprite instanceof EntitySprite) {
 		let entity = sprite.entity;
 		if (entity instanceof Item) {
-		    return sprite.getBounds().containsPt(p);
+		    return sprite.getBounds().containsPt(pos);
 		}
 	    }
 	    return false;
 	});
-	let sprite = this.layer2.apply(findItem);
+	let sprite = this.itemLayer.apply(findItem);
 	if (sprite instanceof EntitySprite) {
 	    let entity = sprite.entity;
 	    if (this._cursor === null && entity instanceof Item) {

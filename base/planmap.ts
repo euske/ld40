@@ -89,8 +89,7 @@ class PlanAction {
     chain(next: PlanAction) {
 	let action: PlanAction = this;
 	while (true) {
-	    if (action.next === null ||
-		action.next instanceof FinishAction) {
+	    if (action.next === null) {
 		action.next = next;
 		break;
 	    }
@@ -104,9 +103,9 @@ class PlanAction {
     }
 }
 
-class FinishAction extends PlanAction {
+class NullAction extends PlanAction {
     toString() {
-	return ('<FinishAction('+this.p.x+','+this.p.y+')>');
+	return ('<NullAction('+this.p.x+','+this.p.y+')>');
     }
 }
 
@@ -188,7 +187,7 @@ class PlanMap {
 	this._queue = [];
 	this._goal = goal;  
 	this._start = start;  
-	this.addAction(null, new FinishAction(goal));
+	this.addAction(null, new NullAction(goal));
 	while (0 < this._queue.length) {
 	    let entry = this._queue.shift();
 	    let action = entry.action;
@@ -271,7 +270,9 @@ class ActionRunner extends Task {
     }
 
     execute(action: PlanAction): PlanAction {
-	// [OVERRIDE]
-	return action.next;
+	if (action instanceof NullAction) {
+	    return action.next;
+	}
+	return action;
     }
 }
