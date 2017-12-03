@@ -32,9 +32,32 @@ addInitHook(() => {
 });
 
 
+//  Thingy
+//
+class Thingy extends Entity {
+    
+    release(item: Item) {
+	assert(item.owner === this);
+	item.setOwner(null);
+    }
+}
+
+
+//  Basket
+//
+class Basket extends Thingy {
+    
+    constructor(pos: Vec2) {
+	super(pos);
+	this.skin = new RectImageSource('#880000', new Rect(-16,-16,32,32));
+	this.collider = this.skin.getBounds();
+    }
+}
+
+
 //  Target
 //
-class Target extends Entity {
+class Target extends Thingy {
 
     focused: boolean = false;
 
@@ -42,17 +65,29 @@ class Target extends Entity {
 	super.update();
 	this.sprite.alpha = (this.focused)? 0.5 : 1.0;
     }
+
+    take(item: Item) {
+	assert(item.owner === null);
+	item.setOwner(this);
+    }
 }
 
 
 //  Washer
 //
 class Washer extends Target {
+
+    item: Item = null;
     
     constructor(pos: Vec2) {
 	super(pos);
 	this.skin = new RectImageSource('white', new Rect(-16,-16,32,32));
 	this.collider = this.skin.getBounds();
+    }
+
+    take(item: Item) {
+	super.take(item);
+	this.item = item;
     }
 }
 
@@ -61,9 +96,28 @@ class Washer extends Target {
 //
 class Dryer extends Target {
     
+    item: Item = null;
+    
     constructor(pos: Vec2) {
 	super(pos);
 	this.skin = new RectImageSource('cyan', new Rect(-16,-16,32,32));
+	this.collider = this.skin.getBounds();
+    }
+
+    take(item: Item) {
+	super.take(item);
+	this.item = item;
+    }
+}
+
+
+//  Exit
+//
+class Exit extends Target {
+    
+    constructor(pos: Vec2) {
+	super(pos);
+	this.skin = new RectImageSource('#008800', new Rect(-16,-16,32,32));
 	this.collider = this.skin.getBounds();
     }
 }
@@ -73,39 +127,31 @@ class Dryer extends Target {
 //
 class Item extends Entity {
 
+    owner: Entity;
+
+    constructor(pos: Vec2, owner: Entity=null) {
+	super(pos);
+	this.owner = owner;
+    }
+    
+    setOwner(owner: Entity) {
+	this.owner = owner;
+    }
+
+    update() {
+	if (this.owner !== null) {
+	    this.pos = this.owner.pos;
+	}
+    }
 }
 
 class Cloth extends Item {
-    
-    constructor(pos: Vec2) {
-	super(pos);
+
+    dirty: boolean = true;
+
+    constructor(pos: Vec2, owner: Entity) {
+	super(pos, owner);
 	this.skin = new RectImageSource('white', new Rect(-8,-8,16,16));
-	this.collider = this.skin.getBounds();
-    }
-    
-}
-
-
-//  Basket
-//
-class Basket extends Entity {
-    
-    constructor(pos: Vec2) {
-	super(pos);
-	this.skin = new RectImageSource('#880000', new Rect(-16,-16,32,32));
-	this.collider = this.skin.getBounds();
-    }
-    
-}
-
-
-//  Exit
-//
-class Exit extends Entity {
-    
-    constructor(pos: Vec2) {
-	super(pos);
-	this.skin = new RectImageSource('#008800', new Rect(-16,-16,32,32));
 	this.collider = this.skin.getBounds();
     }
     
@@ -116,10 +162,12 @@ class Exit extends Entity {
 //
 class PickAction extends PlanAction {
     
+    src: Thingy;
     item: Item;
     
-    constructor(pos: Vec2, item: Item) {
+    constructor(pos: Vec2, src: Thingy, item: Item) {
 	super(pos);
+	this.src = src;
 	this.item = item;
     }
     
@@ -130,10 +178,12 @@ class PickAction extends PlanAction {
 class PlaceAction extends PlanAction {
     
     item: Item;
+    dst: Target;
     
-    constructor(pos: Vec2, item: Item) {
+    constructor(pos: Vec2, item: Item, dst: Target) {
 	super(pos);
 	this.item = item;
+	this.dst = dst;
     }
     
     toString() {
@@ -143,11 +193,19 @@ class PlaceAction extends PlanAction {
 
 class PlayerActionRunner extends PlatformerActionRunner {
     
+    constructor(actor: Player, action: PlanAction, timeout=Infinity) {
+	super(actor, action, timeout);
+    }
+
     execute(action: PlanAction): PlanAction {
 	log("action="+action);
 	if (action instanceof PickAction) {
+	    action.src.release(action.item);
+	    (this.actor as Player).take(action.item);
 	    return action.next;
 	} else if (action instanceof PlaceAction) {
+	    (this.actor as Player).release(action.item);
+	    action.dst.take(action.item);
 	    return action.next;
 	}
 	return super.execute(action);
@@ -157,6 +215,7 @@ class PlayerActionRunner extends PlatformerActionRunner {
 class Player extends PlanningEntity {
 
     scene: Game;
+    item: Item = null;
 
     constructor(scene: Game, pos: Vec2) {
 	super(scene.grid, scene.tilemap, scene.physics, pos);
@@ -170,18 +229,33 @@ class Player extends PlanningEntity {
 	super.update();
     }
 
+    take(item: Item) {
+	assert(item.owner === null);
+	item.setOwner(this);
+	this.item = item;
+    }
+    
+    release(item: Item) {
+	assert(item.owner === this);
+	item.setOwner(null);
+	this.item = null;
+    }
+    
     getFencesFor(range: Rect, v: Vec2, context: string): Rect[] {
 	return [this.scene.screen];
     }
     
-    setPlan(item: Item, target: Target) {
-	let pos0 = this.grid.coord2grid(this.scene.basket.pos);
-	let pos1 = this.grid.coord2grid(target.pos);
-	let action = this.buildPlan(pos0);
-	//assert(action !== null);
-	action.chain(new PickAction(pos0, item));
+    setPlan(item: Item, dst: Target) {
+	if (this.item !== null) return;
+	if (!(item.owner instanceof Thingy)) return;
+	let src = item.owner as Thingy;
+	let pos0 = this.grid.coord2grid(src.pos);
+	let pos1 = this.grid.coord2grid(dst.pos);
+	let action: PlanAction = this.buildPlan(pos0);
+	assert(action !== null);
+	action.chain(new PickAction(pos0, src, item));
 	action.chain(this.buildPlan(pos1, pos0));
-	action.chain(new PlaceAction(pos1, item));
+	action.chain(new PlaceAction(pos1, item, dst));
 	let runner = new PlayerActionRunner(this, action);
 	this.tasklist.add(runner);
     }
@@ -255,8 +329,8 @@ class Game extends GameScene {
 	    let rect = this.tilemap.map2coord(new Vec2(x,y));
 	    switch (c) {
 	    case 3:
-		this.add(new Cloth(rect.center()), this.front);
 		this.basket = new Basket(rect.center());
+		this.add(new Cloth(rect.center(), this.basket), this.front);
 		this.add(this.basket);
 		break;
 	    case 4:

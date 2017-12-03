@@ -281,7 +281,7 @@ function calcFallRange(
 //
 class PlatformerActionRunner extends ActionRunner {
 
-    constructor(actor: PlatformerActor, action: PlatformerAction, timeout=Infinity) {
+    constructor(actor: PlatformerActor, action: PlanAction, timeout=Infinity) {
 	super(actor, action, timeout);
     }
 
