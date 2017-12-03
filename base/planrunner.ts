@@ -410,7 +410,7 @@ class PlanningEntity extends PlatformerEntity implements PlatformerActor {
     private _fallpts: Vec2[] = null;
     speed: number = 4;
     maxdist: number = 4;
-    
+
     static debug: boolean = false;
 
     constructor(grid: GridConfig, tilemap: TileMap,
@@ -418,6 +418,10 @@ class PlanningEntity extends PlatformerEntity implements PlatformerActor {
 	super(tilemap, physics, pos);
 	this.grid = grid;
 	this.plan = new PlatformerPlanMap(this.grid, tilemap, physics);
+    }
+
+    setAction(action: PlanAction) {
+	// [OVERRIDE]
     }
 
     isCloseTo(p: Vec2) {

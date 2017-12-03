@@ -39,6 +39,7 @@ class GridConfig {
 //  PlanActor
 //
 interface PlanActor {
+    setAction(action: PlanAction): void;
 }
 
 
@@ -245,6 +246,7 @@ class ActionRunner extends Task {
 	this.actor = actor;
 	this.timeout = timeout;
 
+	this.actor.setAction(action);
 	this.action = action;
 	this.lifetime = timeout;
     }
@@ -258,8 +260,10 @@ class ActionRunner extends Task {
 	if (action !== null) {
 	    action = this.execute(action);
 	    if (action === null) {
+		this.actor.setAction(action);
 		this.stop();
 	    } else if (action !== this.action) {
+		this.actor.setAction(action);
 		this.lifetime = this.timeout;
 	    }
 	    this.action = action;

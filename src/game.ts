@@ -18,17 +18,15 @@
 let FONT: Font;
 let SPRITES:SpriteSheet;
 let TILES:SpriteSheet;
+let ITEMS:SpriteSheet;
 addInitHook(() => {
     FONT = new Font(APP.images['font'], 'white');
     SPRITES = new ImageSpriteSheet(
-	APP.images['sprites'], new Vec2(16,16), new Vec2(8,8));
-    //TILES = new ImageSpriteSheet(
-    //APP.images['tiles'], new Vec2(32,32), new Vec2(0,0));
-    TILES = new SimpleSpriteSheet([
-	new RectImageSource('#000088', new Rect(0,0,32,32)),
-	new RectImageSource('#cc0000', new Rect(0,0,32,32)),
-	new RectImageSource('#cccc00', new Rect(0,0,32,32)),
-    ]);
+	APP.images['sprites'], new Vec2(32,32), new Vec2(16,16));
+    TILES = new ImageSpriteSheet(
+	APP.images['tiles'], new Vec2(32,32), new Vec2(0,0));
+    ITEMS = new ImageSpriteSheet(
+	APP.images['items'], new Vec2(16,16), new Vec2(8,8));
 });
 
 
@@ -49,7 +47,7 @@ class Basket extends Thingy {
     
     constructor(pos: Vec2) {
 	super(pos);
-	this.skin = new RectImageSource('#880000', new Rect(-16,-16,32,32));
+	this.skin = SPRITES.get(5,0);
 	this.collider = this.skin.getBounds();
     }
 }
@@ -61,14 +59,21 @@ class Target extends Thingy {
 
     focused: boolean = false;
 
-    update() {
-	super.update();
-	this.sprite.alpha = (this.focused)? 0.5 : 1.0;
-    }
-
     take(item: Item) {
 	assert(item.owner === null);
 	item.setOwner(this);
+    }
+}
+
+
+//  Exit
+//
+class Exit extends Target {
+    
+    constructor(pos: Vec2) {
+	super(pos);
+	this.skin = SPRITES.get(5,1);
+	this.collider = this.skin.getBounds();
     }
 }
 
@@ -81,8 +86,13 @@ class Washer extends Target {
     
     constructor(pos: Vec2) {
 	super(pos);
-	this.skin = new RectImageSource('white', new Rect(-16,-16,32,32));
+	this.skin = SPRITES.get(8,0);
 	this.collider = this.skin.getBounds();
+    }
+
+    update() {
+	super.update();
+	this.skin = SPRITES.get(8, (this.focused)? 1 : 0);
     }
 
     take(item: Item) {
@@ -100,25 +110,18 @@ class Dryer extends Target {
     
     constructor(pos: Vec2) {
 	super(pos);
-	this.skin = new RectImageSource('cyan', new Rect(-16,-16,32,32));
+	this.skin = SPRITES.get(6,0);
 	this.collider = this.skin.getBounds();
+    }
+
+    update() {
+	super.update();
+	this.skin = SPRITES.get(6, (this.focused)? 1 : 0);
     }
 
     take(item: Item) {
 	super.take(item);
 	this.item = item;
-    }
-}
-
-
-//  Exit
-//
-class Exit extends Target {
-    
-    constructor(pos: Vec2) {
-	super(pos);
-	this.skin = new RectImageSource('#008800', new Rect(-16,-16,32,32));
-	this.collider = this.skin.getBounds();
     }
 }
 
@@ -147,11 +150,11 @@ class Item extends Entity {
 
 class Cloth extends Item {
 
-    dirty: boolean = true;
+    stage: number = 0;
 
     constructor(pos: Vec2, owner: Entity) {
 	super(pos, owner);
-	this.skin = new RectImageSource('white', new Rect(-8,-8,16,16));
+	this.skin = ITEMS.get(1,0);
 	this.collider = this.skin.getBounds();
     }
     
@@ -175,6 +178,7 @@ class PickAction extends PlanAction {
 	return ('<PickAction('+this.p.x+','+this.p.y+')>');
     }
 }
+
 class PlaceAction extends PlanAction {
     
     item: Item;
@@ -217,16 +221,42 @@ class Player extends PlanningEntity {
     scene: Game;
     item: Item = null;
 
+    _action: PlanAction = null;
+    _dir: number = 1;
+    _phase: number = 0;
+
     constructor(scene: Game, pos: Vec2) {
 	super(scene.grid, scene.tilemap, scene.physics, pos);
 	this.scene = scene;
-	this.skin = new RectImageSource('#00ff00', new Rect(-16,-16,32,32));
+	this.skin = SPRITES.get(1,0);
 	this.collider = this.skin.getBounds();
 	this.setHitbox(this.collider as Rect);
+	this.speed = 2;
+    }
+
+    setAction(action: PlanAction) {
+	this._action = action;
+	this._dir = (action instanceof PlatformerAction)?
+	    (action.next.p.x - this.getGridPos().x) : +1;
     }
 
     update() {
 	super.update();
+	if (this._action instanceof PlatformerWalkAction) {
+	    this.skin = SPRITES.get((this.item !== null)? 3 : 2, this._phase);
+	    this.sprite.scale = new Vec2(this._dir, 1);
+	    this._phase = phase(getTime(), 0.4);
+	} else if (this._action instanceof PlatformerClimbAction) {
+	    this.skin = SPRITES.get(4, this._phase);
+	    this.sprite.scale = new Vec2(1, 1);
+	    this._phase = phase(getTime(), 0.4);
+	} else if (this._action instanceof PlatformerJumpAction ||
+		   this._action instanceof PlatformerFallAction) {
+	    this.skin = SPRITES.get((this.item !== null)? 3 : 2, this._phase);
+	    this.sprite.scale = new Vec2(this._dir, 1);
+	} else {
+	    this.skin = SPRITES.get(1,0);
+	}	    
     }
 
     take(item: Item) {
@@ -288,7 +318,8 @@ class Game extends GameScene {
     physics: PhysicsConfig;
     tilemap: TileMap;
     grid: GridConfig;
-    front: SpriteLayer;
+    layer1: SpriteLayer;
+    layer2: SpriteLayer;
     basket: Basket;
     exit: Exit;
 
@@ -304,10 +335,10 @@ class Game extends GameScene {
 	
 	const MAP = [
 	    "0000000000",
-	    "0005555500",
+	    "0005656500",
 	    "0021111120",
 	    "0020000020",
-	    "3926666624",
+	    "3926565624",
 	    "1111111111",
 	];
 	this.physics = new PhysicsConfig();
@@ -319,30 +350,34 @@ class Game extends GameScene {
 	    (v:string) => { return str2array(v); }
 	));
 	this.grid = new GridConfig(this.tilemap);
-	this.front = this.camera.newLayer();
-	
-	let p = this.tilemap.findTile((c:number) => { return c == 9; });
-	this.player = new Player(this, this.tilemap.map2coord(p).center());
-	this.add(this.player, this.front);
+	this.layer1 = this.camera.newLayer();
+	this.layer2 = this.camera.newLayer();
 	
 	this.tilemap.apply((x:number, y:number, c:number) => {
-	    let rect = this.tilemap.map2coord(new Vec2(x,y));
+	    let pos = this.tilemap.map2coord(new Vec2(x,y)).center();
 	    switch (c) {
 	    case 3:
-		this.basket = new Basket(rect.center());
-		this.add(new Cloth(rect.center(), this.basket), this.front);
+		this.basket = new Basket(pos);
+		this.add(new Cloth(pos, this.basket), this.layer2);
 		this.add(this.basket);
 		break;
 	    case 4:
-		this.exit = new Exit(rect.center());
+		this.exit = new Exit(pos);
 		this.add(this.exit);
 		break;
 	    case 5:
-		this.add(new Washer(rect.center()));
+		this.add(new Washer(pos));
 		break;
 	    case 6:
-		this.add(new Dryer(rect.center()));
+		this.add(new Dryer(pos));
 		break;
+	    case 9:
+		this.player = new Player(this, pos);
+		this.add(this.player, this.layer1);
+		break;
+	    }
+	    if (3 <= c) {
+		this.tilemap.set(x, y, 0);
 	    }
 	    return false;
 	});
@@ -386,7 +421,7 @@ class Game extends GameScene {
 	    }
 	    return false;
 	});
-	let sprite = this.front.apply(findItem);
+	let sprite = this.layer2.apply(findItem);
 	if (sprite instanceof EntitySprite) {
 	    let entity = sprite.entity;
 	    if (this._cursor === null && entity instanceof Item) {
