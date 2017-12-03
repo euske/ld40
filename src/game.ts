@@ -114,20 +114,46 @@ class Exit extends Entity {
 
 //  Player
 //
-class PlayerAction extends PlanAction {
+class PickAction extends PlanAction {
+    
+    item: Item;
+    
+    constructor(pos: Vec2, item: Item) {
+	super(pos);
+	this.item = item;
+    }
+    
     toString() {
-	return ('<PlayerAction('+this.p.x+','+this.p.y+')>');
+	return ('<PickAction('+this.p.x+','+this.p.y+')>');
     }
 }
+class PlaceAction extends PlanAction {
+    
+    item: Item;
+    
+    constructor(pos: Vec2, item: Item) {
+	super(pos);
+	this.item = item;
+    }
+    
+    toString() {
+	return ('<PlaceAction('+this.p.x+','+this.p.y+')>');
+    }
+}
+
 class PlayerActionRunner extends PlatformerActionRunner {
+    
     execute(action: PlanAction): PlanAction {
 	log("action="+action);
-	if (action instanceof PlayerAction) {
+	if (action instanceof PickAction) {
+	    return action.next;
+	} else if (action instanceof PlaceAction) {
 	    return action.next;
 	}
 	return super.execute(action);
     }
 }
+
 class Player extends PlanningEntity {
 
     scene: Game;
@@ -153,8 +179,9 @@ class Player extends PlanningEntity {
 	let pos1 = this.grid.coord2grid(target.pos);
 	let action = this.buildPlan(pos0);
 	//assert(action !== null);
-	action.chain(new PlayerAction(pos0));
+	action.chain(new PickAction(pos0, item));
 	action.chain(this.buildPlan(pos1, pos0));
+	action.chain(new PlaceAction(pos1, item));
 	let runner = new PlayerActionRunner(this, action);
 	this.tasklist.add(runner);
     }

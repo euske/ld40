@@ -8,6 +8,8 @@
 //  PlatformerActor
 //
 interface PlatformerActor extends PlanActor {
+    isCloseTo(p: Vec2): boolean;
+    
     canMove(v: Vec2): boolean;
     canJump(): boolean;
     canFall(): boolean;
@@ -282,7 +284,7 @@ class PlatformerActionRunner extends ActionRunner {
     constructor(actor: PlatformerActor, action: PlatformerAction, timeout=Infinity) {
 	super(actor, action, timeout);
     }
-    
+
     execute(action: PlanAction): PlanAction {
 	let actor = this.actor as PlatformerActor;;
 	let cur = actor.getGridPos();
@@ -292,7 +294,7 @@ class PlatformerActionRunner extends ActionRunner {
 	    action instanceof PlatformerClimbAction) {
 	    let dst = action.next.p;
 	    actor.moveToward(dst);
-	    if (cur.equals(dst)) {
+	    if (actor.isCloseTo(dst)) {
 		return action.next;
 	    }
 	    
@@ -308,7 +310,7 @@ class PlatformerActionRunner extends ActionRunner {
 		    break;
 		}
 	    }
-	    if (cur.equals(dst)) {
+	    if (actor.isCloseTo(dst)) {
 		return action.next;
 	    }
 	    
@@ -407,6 +409,7 @@ class PlanningEntity extends PlatformerEntity implements PlatformerActor {
     private _jumppts: Vec2[] = null;
     private _fallpts: Vec2[] = null;
     speed: number = 4;
+    maxdist: number = 4;
     
     static debug: boolean = false;
 
@@ -417,6 +420,10 @@ class PlanningEntity extends PlatformerEntity implements PlatformerActor {
 	this.plan = new PlatformerPlanMap(this.grid, tilemap, physics);
     }
 
+    isCloseTo(p: Vec2) {
+	return this.grid.grid2coord(p).distance(this.pos) < this.maxdist;
+    }
+    
     setHitbox(hitbox: Rect) {
 	let gs = this.grid.gridsize;
 	this.gridbox = new Rect(
